@@ -31,8 +31,37 @@ Each approach is documented with its limitations and the reasons behind choosing
 The project is currently in its early stages.  
 Initial work focuses on defining the API contract and implementing a basic in-memory rate limiting strategy.
 
-## How to Run
-Instructions will be added as the implementation progresses.
+
+## Endpoints
+### GET `/health` to check the health of the server
+### GET `/protected` route to where the requests should be made to test the Rate Limit
+
+## Getting Started
+
+### Prerequisites
+- Go 1.22 or newer
+
+### Running the server
+
+Clone the repository and run:
+```bash
+go run .
+```
+
+The server will start on: `http://localhost:8080`
+
+### Testing protected endpoint
+
+Send request with an API Key: `curl -H "X-API-Key: test" http://localhost:8080/protected`
+
+To test the limits run:
+```bash
+for i in {1..12}; do
+  curl -H "X-API-Key: test" localhost:8080/protected
+done
+```
+
+After exceeding the configured limit, the server will respond with: `429 Too Many Requests`
 
 ## Roadmap
 - Define the HTTP API contract
