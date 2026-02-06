@@ -1,16 +1,52 @@
 package main
 
 import (
+	"log"
 	"net/http"
 	"strconv"
+	"time"
 )
+
+type StatusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func maskAPIKey(key string) string {
+	if len(key) <= 4 {
+		return "****"
+	}
+
+	return key[:2] + "****" + key[len(key)-2:]
+}
+
+func (sr *StatusRecorder) WriteHeader(code int) {
+	sr.status = code
+	sr.ResponseWriter.WriteHeader(code)
+}
 
 func RateLimit(l *RateLimiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+
+			recorder := &StatusRecorder{
+				ResponseWriter: w,
+				status:         http.StatusOK,
+			}
+
 			apiKey := r.Header.Get("X-API-Key")
 			if apiKey == "" {
-				http.Error(w, "missing API key", http.StatusUnauthorized)
+				http.Error(recorder, "missing API key", http.StatusUnauthorized)
+
+				log.Printf(
+					"method=%s path=%s apiKey=missing allowed=false status=%d duration=%s",
+					r.Method,
+					r.URL.Path,
+					http.StatusUnauthorized,
+					time.Since(start),
+				)
+
 				return
 			}
 
@@ -22,8 +58,29 @@ func RateLimit(l *RateLimiter) func(http.Handler) http.Handler {
 
 			if !result.Allowed {
 				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+
+				log.Printf(
+					"method=%s path=%s apiKey=%s allowed=false status=%d remaining=%d duration=%s",
+					r.Method,
+					r.URL.Path,
+					maskAPIKey(apiKey),
+					http.StatusTooManyRequests,
+					result.Remaining,
+					time.Since(start),
+				)
+
 				return
 			}
+
+			log.Printf(
+				"method=%s path=%s apiKey=%s allowed=false status=%d remaining=%d duration=%s",
+				r.Method,
+				r.URL.Path,
+				maskAPIKey(apiKey),
+				http.StatusOK,
+				result.Remaining,
+				time.Since(start),
+			)
 
 			next.ServeHTTP(w, r)
 		})
