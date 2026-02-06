@@ -17,6 +17,13 @@ type RateLimiter struct {
 	window  time.Duration
 }
 
+type RateLimitResult struct {
+	Allowed   bool
+	Remaining int
+	ResetAt   time.Time
+	Limit     int
+}
+
 func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 	return &RateLimiter{
 		clients: make(map[string]*clientState),
@@ -25,7 +32,7 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 	}
 }
 
-func (rl *RateLimiter) Allow(apiKey string) bool {
+func (rl *RateLimiter) Allow(apiKey string) RateLimitResult {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
@@ -38,19 +45,40 @@ func (rl *RateLimiter) Allow(apiKey string) bool {
 			windowStart: now,
 		}
 
-		return true
+		return RateLimitResult{
+			Allowed:   true,
+			Remaining: rl.limit - 1,
+			ResetAt:   now.Add(rl.window),
+			Limit:     rl.limit,
+		}
 	}
 
 	if now.Sub(state.windowStart) >= rl.window {
 		state.count = 1
 		state.windowStart = now
-		return true
+
+		return RateLimitResult{
+			Allowed:   true,
+			Remaining: rl.limit - 1,
+			ResetAt:   now.Add(rl.window),
+			Limit:     rl.limit,
+		}
 	}
 
 	if state.count >= rl.limit {
-		return false
+		return RateLimitResult{
+			Allowed:   false,
+			Remaining: 0,
+			ResetAt:   state.windowStart.Add(rl.window),
+			Limit:     rl.limit,
+		}
 	}
 
 	state.count++
-	return true
+	return RateLimitResult{
+		Allowed:   true,
+		Remaining: rl.limit - state.count,
+		ResetAt:   state.windowStart.Add(rl.window),
+		Limit:     rl.limit,
+	}
 }
