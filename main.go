@@ -17,7 +17,7 @@ func main() {
 		"vip": {Limit: 3, Window: time.Minute},
 	}
 
-	rl := NewFixedWindowLimiter(defaultLimit, overrides)
+	rl := NewTokenBucketLimiter(defaultLimit, overrides)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
