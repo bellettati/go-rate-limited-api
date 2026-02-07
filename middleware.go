@@ -25,7 +25,7 @@ func (sr *StatusRecorder) WriteHeader(code int) {
 	sr.ResponseWriter.WriteHeader(code)
 }
 
-func RateLimit(l *RateLimiter) func(http.Handler) http.Handler {
+func RateLimit(l Limiter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.URL.Path == "/health" {

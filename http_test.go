@@ -8,7 +8,7 @@ import (
 )
 
 func setupTestServer() http.Handler {
-	rl := NewRateLimiter(
+	rl := NewFixedWindowLimiter(
 		LimitConfig{Limit: 2, Window: time.Minute},
 		nil,
 	)
