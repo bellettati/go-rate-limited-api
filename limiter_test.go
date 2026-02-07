@@ -7,7 +7,7 @@ import (
 )
 
 func TestAllow_FirstRequestAllowed(t *testing.T) {
-	rl := NewRateLimiter(5, time.Minute)
+	rl := NewRateLimiter(LimitConfig{Limit: 5, Window: time.Minute}, nil)
 
 	result := rl.Allow("test-key")
 
@@ -17,7 +17,7 @@ func TestAllow_FirstRequestAllowed(t *testing.T) {
 }
 
 func TestAllow_ExceedsLimit(t *testing.T) {
-	rl := NewRateLimiter(2, time.Minute)
+	rl := NewRateLimiter(LimitConfig{Limit: 2, Window: time.Minute}, nil)
 
 	key := "test-key"
 
@@ -32,7 +32,7 @@ func TestAllow_ExceedsLimit(t *testing.T) {
 }
 
 func TestAllow_ResetsAfterWindow(t *testing.T) {
-	rl := NewRateLimiter(1, 50*time.Millisecond)
+	rl := NewRateLimiter(LimitConfig{Limit: 1, Window: 50 * time.Millisecond}, nil)
 
 	key := "test-key"
 
@@ -55,7 +55,7 @@ func TestAllow_ResetsAfterWindow(t *testing.T) {
 }
 
 func TestAllow_ConcurrentAccess(t *testing.T) {
-	rl := NewRateLimiter(100, time.Millisecond)
+	rl := NewRateLimiter(LimitConfig{Limit: 100, Window: time.Millisecond}, nil)
 
 	key := "test-key"
 
@@ -70,4 +70,20 @@ func TestAllow_ConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestAllow_OverrideTakesPrecedence(t *testing.T) {
+	rl := NewRateLimiter(
+		LimitConfig{Limit: 5, Window: time.Minute},
+		map[string]LimitConfig{
+			"vip": {Limit: 1, Window: time.Minute},
+		},
+	)
+
+	rl.Allow("vip")
+	result := rl.Allow("vip")
+
+	if result.Allowed {
+		t.Fatalf("expected override limit to be enforced")
+	}
 }

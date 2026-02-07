@@ -13,7 +13,9 @@ func main() {
 		Window: time.Minute,
 	}
 
-	overrides := map[string]LimitConfig{}
+	overrides := map[string]LimitConfig{
+		"vip": LimitConfig{Limit: 3, Window: time.Minute},
+	}
 
 	rl := NewRateLimiter(defaultLimit, overrides)
 

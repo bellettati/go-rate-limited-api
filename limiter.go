@@ -41,6 +41,14 @@ func NewRateLimiter(defaultLimit LimitConfig, overrides map[string]LimitConfig) 
 	}
 }
 
+func (rl *RateLimiter) configFor(apiKey string) LimitConfig {
+	if cfg, ok := rl.overrides[apiKey]; ok {
+		return cfg
+	}
+
+	return rl.defaultLimit
+}
+
 func (rl *RateLimiter) Allow(apiKey string) RateLimitResult {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
@@ -49,10 +57,7 @@ func (rl *RateLimiter) Allow(apiKey string) RateLimitResult {
 
 	state, exists := rl.clients[apiKey]
 
-	cfg, ok := rl.overrides[apiKey]
-	if !ok {
-		cfg = rl.defaultLimit
-	}
+	cfg := rl.configFor(apiKey)
 
 	if !exists {
 		rl.clients[apiKey] = &clientState{
