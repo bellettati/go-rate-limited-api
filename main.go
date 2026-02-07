@@ -8,7 +8,14 @@ import (
 )
 
 func main() {
-	rl := NewRateLimiter(10, time.Minute)
+	defaultLimit := LimitConfig{
+		Limit:  10,
+		Window: time.Minute,
+	}
+
+	overrides := map[string]LimitConfig{}
+
+	rl := NewRateLimiter(defaultLimit, overrides)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

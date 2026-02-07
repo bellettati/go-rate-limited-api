@@ -11,10 +11,10 @@ type clientState struct {
 }
 
 type RateLimiter struct {
-	mu      sync.Mutex
-	clients map[string]*clientState
-	limit   int
-	window  time.Duration
+	mu           sync.Mutex
+	clients      map[string]*clientState
+	defaultLimit LimitConfig
+	overrides    map[string]LimitConfig
 }
 
 type RateLimitResult struct {
@@ -24,11 +24,20 @@ type RateLimitResult struct {
 	Limit     int
 }
 
-func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
+type LimitConfig struct {
+	Limit  int
+	Window time.Duration
+}
+
+func NewRateLimiter(defaultLimit LimitConfig, overrides map[string]LimitConfig) *RateLimiter {
+	if overrides == nil {
+		overrides = make(map[string]LimitConfig)
+	}
+
 	return &RateLimiter{
-		clients: make(map[string]*clientState),
-		limit:   limit,
-		window:  window,
+		clients:      make(map[string]*clientState),
+		defaultLimit: defaultLimit,
+		overrides:    overrides,
 	}
 }
 
@@ -39,6 +48,12 @@ func (rl *RateLimiter) Allow(apiKey string) RateLimitResult {
 	now := time.Now()
 
 	state, exists := rl.clients[apiKey]
+
+	cfg, ok := rl.overrides[apiKey]
+	if !ok {
+		cfg = rl.defaultLimit
+	}
+
 	if !exists {
 		rl.clients[apiKey] = &clientState{
 			count:       1,
@@ -47,38 +62,39 @@ func (rl *RateLimiter) Allow(apiKey string) RateLimitResult {
 
 		return RateLimitResult{
 			Allowed:   true,
-			Remaining: rl.limit - 1,
-			ResetAt:   now.Add(rl.window),
-			Limit:     rl.limit,
+			Remaining: cfg.Limit - 1,
+			ResetAt:   now.Add(cfg.Window),
+			Limit:     cfg.Limit,
 		}
 	}
 
-	if now.Sub(state.windowStart) >= rl.window {
+	if now.Sub(state.windowStart) >= cfg.Window {
 		state.count = 1
 		state.windowStart = now
 
 		return RateLimitResult{
 			Allowed:   true,
-			Remaining: rl.limit - 1,
-			ResetAt:   now.Add(rl.window),
-			Limit:     rl.limit,
+			Remaining: cfg.Limit - 1,
+			ResetAt:   now.Add(cfg.Window),
+			Limit:     cfg.Limit,
 		}
 	}
 
-	if state.count >= rl.limit {
+	if state.count >= cfg.Limit {
 		return RateLimitResult{
 			Allowed:   false,
 			Remaining: 0,
-			ResetAt:   state.windowStart.Add(rl.window),
-			Limit:     rl.limit,
+			ResetAt:   state.windowStart.Add(cfg.Window),
+			Limit:     cfg.Limit,
 		}
 	}
 
 	state.count++
+
 	return RateLimitResult{
 		Allowed:   true,
-		Remaining: rl.limit - state.count,
-		ResetAt:   state.windowStart.Add(rl.window),
-		Limit:     rl.limit,
+		Remaining: cfg.Limit - state.count,
+		ResetAt:   state.windowStart.Add(cfg.Window),
+		Limit:     cfg.Limit,
 	}
 }
