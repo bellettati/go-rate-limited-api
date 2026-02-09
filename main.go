@@ -8,16 +8,25 @@ import (
 )
 
 func main() {
+	cfg := LoadConfig()
+
 	defaultLimit := LimitConfig{
-		Limit:  10,
-		Window: time.Minute,
+		Limit:  cfg.DefaultLimit,
+		Window: cfg.DefaultWindow,
 	}
 
 	overrides := map[string]LimitConfig{
 		"vip": {Limit: 3, Window: time.Minute},
 	}
 
-	rl := NewTokenBucketLimiter(defaultLimit, overrides)
+	var limiter Limiter
+
+	switch cfg.RateLimitStrategy {
+	case "token_bucket":
+		limiter = NewTokenBucketLimiter(defaultLimit, overrides)
+	default:
+		limiter = NewFixedWindowLimiter(defaultLimit, overrides)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -28,7 +37,7 @@ func main() {
 		w.Write([]byte("ok\n"))
 	})
 
-	rateLimitedMux := RateLimit(rl)(mux)
+	rateLimitedMux := RateLimit(limiter)(mux)
 
 	log.Println("Server running on :8080")
 	log.Fatal(http.ListenAndServe(":8080", rateLimitedMux))
