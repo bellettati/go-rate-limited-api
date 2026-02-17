@@ -11,7 +11,9 @@ import (
 )
 
 func setupTestServer() http.Handler {
+	clock := limiter.NewFakeClock(time.Now())
 	rl := limiter.NewFixedWindowLimiter(
+		clock,
 		limiter.LimitConfig{Limit: 2, Window: time.Minute},
 		nil,
 	)

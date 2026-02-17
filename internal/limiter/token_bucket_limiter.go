@@ -15,9 +15,11 @@ type TokenBucketLimiter struct {
 	clients      map[string]*tokenBucketState
 	defaultLimit LimitConfig
 	overrides    map[string]LimitConfig
+	clock Clock
 }
 
 func NewTokenBucketLimiter(
+	clock Clock,
 	defaultLimit LimitConfig,
 	overrides map[string]LimitConfig,
 ) *TokenBucketLimiter {
@@ -25,26 +27,53 @@ func NewTokenBucketLimiter(
 		overrides = make(map[string]LimitConfig)
 	}
 
-	return &TokenBucketLimiter{
+	tb := &TokenBucketLimiter{
 		clients:      make(map[string]*tokenBucketState),
 		defaultLimit: defaultLimit,
 		overrides:    overrides,
+		clock: clock,
 	}
+
+	go tb.startCleanup()
+
+	return tb
 }
 
-func (tb *TokenBucketLimiter) limitFor(apiKey string) LimitConfig {
+func (tb *TokenBucketLimiter) configFor(apiKey string) LimitConfig {
 	if cfg, ok := tb.overrides[apiKey]; ok {
 		return cfg
 	}
 	return tb.defaultLimit
 }
 
+func (tb *TokenBucketLimiter) cleanup() {
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+
+	now := tb.clock.Now()
+
+	for key, client := range tb.clients {
+		cfg := tb.configFor(key)
+		if now.Sub(client.lastRefill) > cfg.Window {
+			delete(tb.clients, key)
+		} 
+	}
+}
+
+func (tb *TokenBucketLimiter) startCleanup() {
+	ticker := time.NewTicker(time.Minute)
+
+	for range ticker.C {
+		tb.cleanup()
+	}
+}
+
 func (tb *TokenBucketLimiter) Allow(apiKey string) RateLimitResult {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
 
-	cfg := tb.limitFor(apiKey)
-	now := time.Now()
+	cfg := tb.configFor(apiKey)
+	now := tb.clock.Now()
 
 	state, exists := tb.clients[apiKey]
 	if !exists {

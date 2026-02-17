@@ -6,7 +6,9 @@ import (
 )
 
 func TestTokenBucketAllowsInitialBurst(t *testing.T) {
+	clock := NewFakeClock(time.Now())
 	limiter := NewTokenBucketLimiter(
+		clock,
 		LimitConfig{Limit: 2, Window: time.Minute},
 		nil,
 	)
@@ -25,13 +27,15 @@ func TestTokenBucketAllowsInitialBurst(t *testing.T) {
 }
 
 func TestTokenBucketRefillsOverTime(t *testing.T) {
+	clock := NewFakeClock(time.Now())
 	limiter := NewTokenBucketLimiter(
+		clock,
 		LimitConfig{Limit: 2, Window: time.Second},
 		nil,
 	)
 
 	limiter.Allow("test-key")
-	time.Sleep(time.Second)
+	clock.Advance(time.Second)
 	res := limiter.Allow("test-key")
 
 	if !res.Allowed {
@@ -40,7 +44,9 @@ func TestTokenBucketRefillsOverTime(t *testing.T) {
 }
 
 func TestTokenBucketPartialRefill(t *testing.T) {
+	clock := NewFakeClock(time.Now())
 	limiter := NewTokenBucketLimiter(
+		clock,
 		LimitConfig{Limit: 10, Window: 10 * time.Second},
 		nil,
 	)
@@ -49,7 +55,7 @@ func TestTokenBucketPartialRefill(t *testing.T) {
 		limiter.Allow("test-key")
 	}
 
-	time.Sleep(time.Second)
+	clock.Advance(time.Second)
 
 	res := limiter.Allow("test-key")
 	if !res.Allowed {
@@ -58,12 +64,14 @@ func TestTokenBucketPartialRefill(t *testing.T) {
 }
 
 func TestTokenBucketDoesNotOverfill(t *testing.T) {
+	clock := NewFakeClock(time.Now())
 	limiter := NewTokenBucketLimiter(
+		clock,
 		LimitConfig{Limit: 2, Window: time.Second},
 		nil,
 	)
 
-	time.Sleep(5 * time.Second)
+	clock.Advance(5 * time.Second)
 
 	res1 := limiter.Allow("test-key")
 	res2 := limiter.Allow("test-key")
@@ -79,7 +87,9 @@ func TestTokenBucketDoesNotOverfill(t *testing.T) {
 }
 
 func TestTokenBucketIsolatedPerKey(t *testing.T) {
+	clock := NewFakeClock(time.Now())
 	limiter := NewTokenBucketLimiter(
+		clock,
 		LimitConfig{Limit: 1, Window: time.Minute},
 		nil,
 	)
@@ -93,7 +103,9 @@ func TestTokenBucketIsolatedPerKey(t *testing.T) {
 }
 
 func TestTokenBucketDeniesWhenEmpty(t *testing.T) {
+	clock := NewFakeClock(time.Now())
 	limiter := NewTokenBucketLimiter(
+		clock,
 		LimitConfig{Limit: 1, Window: time.Minute},
 		nil,
 	)
@@ -103,5 +115,27 @@ func TestTokenBucketDeniesWhenEmpty(t *testing.T) {
 
 	if res.Allowed {
 		t.Fatalf("expected denial when bucket is empty")
+	}
+}
+
+func TestCleanUp_RemovesInactiveClients_TokenBucket(t *testing.T) {
+	clock := NewFakeClock(time.Now())
+
+	sw := NewTokenBucketLimiter(
+		clock,
+		LimitConfig{Limit: 5, Window: time.Minute},
+		nil,
+	)
+
+	key := "test-key"
+
+	sw.Allow(key)
+
+	clock.Advance(5 * time.Minute);
+
+	sw.cleanup()
+
+	if _, exists := sw.clients[key]; exists {
+		t.Fatalf("expected client to be removed after incativity")
 	}
 }

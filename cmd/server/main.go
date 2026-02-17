@@ -25,12 +25,13 @@ func main() {
 	}
 
 	var requestLimiter limiter.Limiter
+	clock := limiter.RealClock{} 
 
 	switch cfg.RateLimitStrategy {
 	case "token_bucket":
-		requestLimiter = limiter.NewTokenBucketLimiter(defaultLimit, overrides)
+		requestLimiter = limiter.NewTokenBucketLimiter(clock, defaultLimit, overrides)
 	default:
-		requestLimiter = limiter.NewFixedWindowLimiter(defaultLimit, overrides)
+		requestLimiter = limiter.NewFixedWindowLimiter(clock, defaultLimit, overrides)
 	}
 
 	mux := http.NewServeMux()

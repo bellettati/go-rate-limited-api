@@ -8,6 +8,7 @@ import (
 type clientState struct {
 	count       int
 	windowStart time.Time
+	lastSeen time.Time
 }
 
 type FixedWindowLimiter struct {
@@ -15,18 +16,24 @@ type FixedWindowLimiter struct {
 	clients      map[string]*clientState
 	defaultLimit LimitConfig
 	overrides    map[string]LimitConfig
+	clock Clock
 }
 
-func NewFixedWindowLimiter(defaultLimit LimitConfig, overrides map[string]LimitConfig) *FixedWindowLimiter {
+func NewFixedWindowLimiter(clock Clock, defaultLimit LimitConfig, overrides map[string]LimitConfig) *FixedWindowLimiter {
 	if overrides == nil {
 		overrides = make(map[string]LimitConfig)
 	}
 
-	return &FixedWindowLimiter{
+	rl := &FixedWindowLimiter{
 		clients:      make(map[string]*clientState),
 		defaultLimit: defaultLimit,
 		overrides:    overrides,
+		clock: clock,
 	}
+
+	go rl.startCleanup()
+
+	return rl 
 }
 
 func (rl *FixedWindowLimiter) configFor(apiKey string) LimitConfig {
@@ -37,11 +44,33 @@ func (rl *FixedWindowLimiter) configFor(apiKey string) LimitConfig {
 	return rl.defaultLimit
 }
 
+func (rl *FixedWindowLimiter) cleanup() {
+	rl.mu.Lock()
+	defer rl.mu.Unlock()
+
+	now := rl.clock.Now()
+
+	for key, client := range rl.clients {
+		cfg := rl.configFor(key)
+		if now.Sub(client.lastSeen) > cfg.Window {
+			delete(rl.clients, key)
+		}
+	}
+}
+
+func (rl *FixedWindowLimiter) startCleanup() {
+	ticker := time.NewTicker(time.Minute)
+
+	for range ticker.C {
+		rl.cleanup()
+	}
+}
+
 func (rl *FixedWindowLimiter) Allow(apiKey string) RateLimitResult {
 	rl.mu.Lock()
 	defer rl.mu.Unlock()
 
-	now := time.Now()
+	now := rl.clock.Now()
 
 	state, exists := rl.clients[apiKey]
 
@@ -51,6 +80,7 @@ func (rl *FixedWindowLimiter) Allow(apiKey string) RateLimitResult {
 		rl.clients[apiKey] = &clientState{
 			count:       1,
 			windowStart: now,
+			lastSeen: now,
 		}
 
 		return RateLimitResult{
@@ -60,6 +90,8 @@ func (rl *FixedWindowLimiter) Allow(apiKey string) RateLimitResult {
 			Limit:     cfg.Limit,
 		}
 	}
+
+	state.lastSeen = now
 
 	if now.Sub(state.windowStart) >= cfg.Window {
 		state.count = 1

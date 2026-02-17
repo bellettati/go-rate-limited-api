@@ -7,6 +7,7 @@ import (
 
 type slidingWindowState struct {
 	timestamps  []time.Time
+	lastSeen time.Time
 }
 
 type SlidingWindowLimiter struct {
@@ -14,18 +15,24 @@ type SlidingWindowLimiter struct {
 	clients      map[string]*slidingWindowState
 	defaultLimit LimitConfig
 	overrides    map[string]LimitConfig
+	clock Clock
 }
 
-func NewSlidingWindowLimiter(defaultLimit LimitConfig, overrides map[string]LimitConfig) *SlidingWindowLimiter {
+func NewSlidingWindowLimiter(clock Clock, defaultLimit LimitConfig, overrides map[string]LimitConfig) *SlidingWindowLimiter {
 	if overrides == nil {
 		overrides = make(map[string]LimitConfig)
 	}
 
-	return &SlidingWindowLimiter{
+	sw := &SlidingWindowLimiter{
 		clients:      make(map[string]*slidingWindowState),
 		defaultLimit: defaultLimit,
 		overrides:    overrides,
+		clock: clock,
 	}
+
+	go sw.startCleanup()
+
+	return sw 
 }
 
 func (sw *SlidingWindowLimiter) configFor(apiKey string) LimitConfig {
@@ -36,20 +43,44 @@ func (sw *SlidingWindowLimiter) configFor(apiKey string) LimitConfig {
 	return sw.defaultLimit
 }
 
+func (sw *SlidingWindowLimiter) cleanup() {
+	sw.mu.Lock()
+	defer sw.mu.Unlock()
+
+	now := sw.clock.Now()
+
+	for key, client := range sw.clients {
+		cfg := sw.configFor(key)
+		if now.Sub(client.lastSeen) > cfg.Window {
+			delete(sw.clients, key)
+		}
+	}
+}
+
+func (sw *SlidingWindowLimiter) startCleanup() {
+	ticker := time.NewTicker(time.Minute)
+
+	for range ticker.C {
+		sw.cleanup()
+	}
+}
+
 func (sw *SlidingWindowLimiter) Allow(apiKey string) RateLimitResult {
 	sw.mu.Lock()
 	defer sw.mu.Unlock()
 
-	now := time.Now()
+	now := sw.clock.Now()
 	cfg := sw.configFor(apiKey)
 
 	state, exists := sw.clients[apiKey]
 	if !exists {
 		state = &slidingWindowState{
 			timestamps: make([]time.Time, 0, cfg.Limit),
+			lastSeen: now,
 		}
 		sw.clients[apiKey] = state
 	}
+	state.lastSeen = now
 
 	windowStart := now.Add(-cfg.Window)
 

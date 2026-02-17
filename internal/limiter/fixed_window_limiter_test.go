@@ -7,7 +7,9 @@ import (
 )
 
 func TestAllow_FirstRequestAllowed(t *testing.T) {
-	rl := NewFixedWindowLimiter(LimitConfig{Limit: 5, Window: time.Minute}, nil)
+	clock := NewFakeClock(time.Now())
+
+	rl := NewFixedWindowLimiter(clock, LimitConfig{Limit: 5, Window: time.Minute}, nil)
 
 	result := rl.Allow("test-key")
 
@@ -17,7 +19,9 @@ func TestAllow_FirstRequestAllowed(t *testing.T) {
 }
 
 func TestAllow_ExceedsLimit(t *testing.T) {
-	rl := NewFixedWindowLimiter(LimitConfig{Limit: 2, Window: time.Minute}, nil)
+	clock := NewFakeClock(time.Now())
+
+	rl := NewFixedWindowLimiter(clock, LimitConfig{Limit: 2, Window: time.Minute}, nil)
 
 	key := "test-key"
 
@@ -32,7 +36,8 @@ func TestAllow_ExceedsLimit(t *testing.T) {
 }
 
 func TestAllow_ResetsAfterWindow(t *testing.T) {
-	rl := NewFixedWindowLimiter(LimitConfig{Limit: 1, Window: 50 * time.Millisecond}, nil)
+	clock := NewFakeClock(time.Now())
+	rl := NewFixedWindowLimiter(clock, LimitConfig{Limit: 1, Window: 50 * time.Millisecond}, nil)
 
 	key := "test-key"
 
@@ -46,7 +51,7 @@ func TestAllow_ResetsAfterWindow(t *testing.T) {
 		t.Fatalf("expected second request to be blocked")
 	}
 
-	time.Sleep(60 * time.Millisecond)
+	clock.Advance(60 * time.Millisecond)
 
 	third := rl.Allow(key)
 	if !third.Allowed {
@@ -55,7 +60,8 @@ func TestAllow_ResetsAfterWindow(t *testing.T) {
 }
 
 func TestAllow_ConcurrentAccess(t *testing.T) {
-	rl := NewFixedWindowLimiter(LimitConfig{Limit: 100, Window: time.Millisecond}, nil)
+	clock := NewFakeClock(time.Now())
+	rl := NewFixedWindowLimiter(clock, LimitConfig{Limit: 100, Window: time.Millisecond}, nil)
 
 	key := "test-key"
 
@@ -73,7 +79,9 @@ func TestAllow_ConcurrentAccess(t *testing.T) {
 }
 
 func TestAllow_OverrideTakesPrecedence(t *testing.T) {
+	clock := NewFakeClock(time.Now())
 	rl := NewFixedWindowLimiter(
+		clock,
 		LimitConfig{Limit: 5, Window: time.Minute},
 		map[string]LimitConfig{
 			"vip": {Limit: 1, Window: time.Minute},
@@ -85,5 +93,27 @@ func TestAllow_OverrideTakesPrecedence(t *testing.T) {
 
 	if result.Allowed {
 		t.Fatalf("expected override limit to be enforced")
+	}
+}
+
+func TestCleanUp_RemovesInactiveClients_FixedWindow(t *testing.T) {
+	clock := NewFakeClock(time.Now())
+
+	rl := NewFixedWindowLimiter(
+		clock,
+		LimitConfig{Limit: 5, Window: time.Minute},
+		nil,
+	)
+
+	key := "test-key"
+
+	rl.Allow(key)
+
+	clock.Advance(2 * time.Minute);
+
+	rl.cleanup()
+
+	if _, exists := rl.clients[key]; exists {
+		t.Fatalf("expected client to be removed after incativity")
 	}
 }

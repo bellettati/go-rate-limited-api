@@ -9,7 +9,9 @@ func TestSlidingWindow_AllowWithinLimit(t *testing.T) {
 	limit := 3
 	window := 2 * time.Second
 
+	clock := NewFakeClock(time.Now())
 	limiter := NewSlidingWindowLimiter(
+		clock,
 		LimitConfig{Limit: limit, Window: window},
 		nil,
 	)
@@ -34,7 +36,9 @@ func TestSlidingWindow_RejectWhenLimitExceeds(t *testing.T) {
 	limit := 2
 	window := 2 * time.Second
 
+	clock := NewFakeClock(time.Now())
 	limiter := NewSlidingWindowLimiter(
+		clock, 
 		LimitConfig{Limit: limit, Window: window},
 		nil,
 	)
@@ -58,7 +62,9 @@ func TestSlidingWindow_AllowedAfterWindowPasses(t *testing.T) {
 	limit := 2
 	window := 2 * time.Second
 
+	clock := NewFakeClock(time.Now())
 	limiter := NewSlidingWindowLimiter(
+		clock,
 		LimitConfig{Limit: limit, Window: window},
 		nil,
 	)
@@ -78,7 +84,7 @@ func TestSlidingWindow_AllowedAfterWindowPasses(t *testing.T) {
 		t.Fatalf("expected request to be rejected")
 	}
 
-	time.Sleep(window + 50 * time.Millisecond)
+	clock.Advance(window + 50 * time.Millisecond)
 
 	res = limiter.Allow(apiKey)
 	if !res.Allowed {
@@ -90,7 +96,9 @@ func TestSlidingWindow_IsPerClient(t *testing.T) {
 	limit := 1
 	window := 2 * time.Second
 
+	clock := NewFakeClock(time.Now())
 	limiter := NewSlidingWindowLimiter(
+		clock,
 		LimitConfig{Limit: limit, Window: window},
 		nil,
 	)
@@ -111,5 +119,27 @@ func TestSlidingWindow_IsPerClient(t *testing.T) {
 	res = limiter.Allow(apiKey2)
 	if !res.Allowed {
 		t.Fatalf("expected apiKey2 first request to be allowed independently")
+	}
+}
+
+func TestCleanUp_RemovesInactiveClients_SlidingWindow(t *testing.T) {
+	clock := NewFakeClock(time.Now())
+
+	sw := NewSlidingWindowLimiter(
+		clock,
+		LimitConfig{Limit: 5, Window: time.Minute},
+		nil,
+	)
+
+	key := "test-key"
+
+	sw.Allow(key)
+
+	clock.Advance(5 * time.Minute);
+
+	sw.cleanup()
+
+	if _, exists := sw.clients[key]; exists {
+		t.Fatalf("expected client to be removed after incativity")
 	}
 }
