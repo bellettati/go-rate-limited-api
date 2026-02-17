@@ -9,6 +9,13 @@ import (
 	"github.com/joho/godotenv"
 )
 
+type RateLimitStrategy string
+
+const (
+	FixedWindow RateLimitStrategy = "fixed_window"
+	TokenBucket RateLimitStrategy = "token_bucket"
+)
+
 type Config struct {
 	RateLimitStrategy string
 	DefaultLimit      int

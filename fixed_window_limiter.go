@@ -17,11 +17,6 @@ type FixedWindowLimiter struct {
 	overrides    map[string]LimitConfig
 }
 
-type LimitConfig struct {
-	Limit  int
-	Window time.Duration
-}
-
 func NewFixedWindowLimiter(defaultLimit LimitConfig, overrides map[string]LimitConfig) *FixedWindowLimiter {
 	if overrides == nil {
 		overrides = make(map[string]LimitConfig)
