@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+const slidingWindowCapMax = 256
+
 type slidingWindowState struct {
 	timestamps  []time.Time
 	lastSeen time.Time
@@ -74,8 +76,15 @@ func (sw *SlidingWindowLimiter) Allow(apiKey string) RateLimitResult {
 
 	state, exists := sw.clients[apiKey]
 	if !exists {
+		capHint := cfg.Limit
+		if capHint > slidingWindowCapMax {
+			capHint = slidingWindowCapMax
+		}
+		if capHint < 0 {
+			capHint = 0
+		}
 		state = &slidingWindowState{
-			timestamps: make([]time.Time, 0, cfg.Limit),
+			timestamps: make([]time.Time, 0, capHint),
 			lastSeen: now,
 		}
 		sw.clients[apiKey] = state
