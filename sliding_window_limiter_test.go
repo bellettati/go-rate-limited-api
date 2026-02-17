@@ -109,7 +109,7 @@ func TestSlidingWindow_IsPerClient(t *testing.T) {
 	}
 
 	res = limiter.Allow(apiKey2)
-	if res.Allowed {
+	if !res.Allowed {
 		t.Fatalf("expected apiKey2 first request to be allowed independently")
 	}
 }
