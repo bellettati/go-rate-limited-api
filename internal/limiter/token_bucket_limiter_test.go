@@ -121,7 +121,7 @@ func TestTokenBucketDeniesWhenEmpty(t *testing.T) {
 func TestCleanUp_RemovesInactiveClients_TokenBucket(t *testing.T) {
 	clock := NewFakeClock(time.Now())
 
-	sw := NewTokenBucketLimiter(
+	tb := NewTokenBucketLimiter(
 		clock,
 		LimitConfig{Limit: 5, Window: time.Minute},
 		nil,
@@ -129,13 +129,13 @@ func TestCleanUp_RemovesInactiveClients_TokenBucket(t *testing.T) {
 
 	key := "test-key"
 
-	sw.Allow(key)
+	tb.Allow(key)
 
 	clock.Advance(5 * time.Minute);
 
-	sw.cleanup()
+	tb.cleanup()
 
-	if _, exists := sw.clients[key]; exists {
+	if _, exists := tb.clients[key]; exists {
 		t.Fatalf("expected client to be removed after incativity")
 	}
 }
