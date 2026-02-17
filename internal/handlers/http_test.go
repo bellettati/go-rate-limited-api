@@ -1,15 +1,18 @@
-package main
+package handlers
 
 import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/bellettati/go-rate-limited-api/internal/limiter"
+	"github.com/bellettati/go-rate-limited-api/internal/middleware"
 )
 
 func setupTestServer() http.Handler {
-	rl := NewFixedWindowLimiter(
-		LimitConfig{Limit: 2, Window: time.Minute},
+	rl := limiter.NewFixedWindowLimiter(
+		limiter.LimitConfig{Limit: 2, Window: time.Minute},
 		nil,
 	)
 
@@ -20,7 +23,7 @@ func setupTestServer() http.Handler {
 
 	mux.HandleFunc("/protected", Protected)
 
-	return RateLimit(rl)(mux)
+	return middleware.RateLimit(rl)(mux)
 }
 
 func TestHealthEndpoint(t *testing.T) {
