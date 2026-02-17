@@ -28,10 +28,17 @@ func main() {
 	clock := limiter.RealClock{} 
 
 	switch cfg.RateLimitStrategy {
-	case "token_bucket":
-		requestLimiter = limiter.NewTokenBucketLimiter(clock, defaultLimit, overrides)
-	default:
+	case config.FixedWindow:
 		requestLimiter = limiter.NewFixedWindowLimiter(clock, defaultLimit, overrides)
+
+	case config.SlidingWindow:
+		requestLimiter = limiter.NewSlidingWindowLimiter(clock, defaultLimit, overrides)
+
+	case config.TokenBucket:
+		requestLimiter = limiter.NewTokenBucketLimiter(clock, defaultLimit, overrides)
+
+	default:
+		log.Fatalf("unsupported rate limit strategy: %q", cfg.RateLimitStrategy)
 	}
 
 	mux := http.NewServeMux()
