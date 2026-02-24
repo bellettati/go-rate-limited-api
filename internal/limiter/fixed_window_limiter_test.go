@@ -4,12 +4,15 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/bellettati/go-rate-limited-api/internal/store"
 )
 
 func TestAllow_FirstRequestAllowed(t *testing.T) {
 	clock := NewFakeClock(time.Now())
+	st := store.NewMemoryStoreWithCleanupInterval(time.Minute)
 
-	rl := NewFixedWindowLimiter(clock, LimitConfig{Limit: 5, Window: time.Minute}, nil)
+	rl := NewFixedWindowLimiter(st, clock, LimitConfig{Limit: 5, Window: time.Minute}, nil)
 
 	result := rl.Allow("test-key")
 
@@ -20,8 +23,9 @@ func TestAllow_FirstRequestAllowed(t *testing.T) {
 
 func TestAllow_ExceedsLimit(t *testing.T) {
 	clock := NewFakeClock(time.Now())
+	st := store.NewMemoryStoreWithCleanupInterval(time.Minute)
 
-	rl := NewFixedWindowLimiter(clock, LimitConfig{Limit: 2, Window: time.Minute}, nil)
+	rl := NewFixedWindowLimiter(st, clock, LimitConfig{Limit: 2, Window: time.Minute}, nil)
 
 	key := "test-key"
 
@@ -37,7 +41,8 @@ func TestAllow_ExceedsLimit(t *testing.T) {
 
 func TestAllow_ResetsAfterWindow(t *testing.T) {
 	clock := NewFakeClock(time.Now())
-	rl := NewFixedWindowLimiter(clock, LimitConfig{Limit: 1, Window: 50 * time.Millisecond}, nil)
+	st := store.NewMemoryStoreWithCleanupInterval(time.Minute)
+	rl := NewFixedWindowLimiter(st, clock, LimitConfig{Limit: 1, Window: 50 * time.Millisecond}, nil)
 
 	key := "test-key"
 
@@ -61,7 +66,8 @@ func TestAllow_ResetsAfterWindow(t *testing.T) {
 
 func TestAllow_ConcurrentAccess(t *testing.T) {
 	clock := NewFakeClock(time.Now())
-	rl := NewFixedWindowLimiter(clock, LimitConfig{Limit: 100, Window: time.Millisecond}, nil)
+	st := store.NewMemoryStoreWithCleanupInterval(time.Minute)
+	rl := NewFixedWindowLimiter(st, clock, LimitConfig{Limit: 100, Window: time.Millisecond}, nil)
 
 	key := "test-key"
 
@@ -80,7 +86,9 @@ func TestAllow_ConcurrentAccess(t *testing.T) {
 
 func TestAllow_OverrideTakesPrecedence(t *testing.T) {
 	clock := NewFakeClock(time.Now())
+	st := store.NewMemoryStoreWithCleanupInterval(time.Minute)
 	rl := NewFixedWindowLimiter(
+		st,
 		clock,
 		LimitConfig{Limit: 5, Window: time.Minute},
 		map[string]LimitConfig{
@@ -93,27 +101,5 @@ func TestAllow_OverrideTakesPrecedence(t *testing.T) {
 
 	if result.Allowed {
 		t.Fatalf("expected override limit to be enforced")
-	}
-}
-
-func TestCleanUp_RemovesInactiveClients_FixedWindow(t *testing.T) {
-	clock := NewFakeClock(time.Now())
-
-	rl := NewFixedWindowLimiter(
-		clock,
-		LimitConfig{Limit: 5, Window: time.Minute},
-		nil,
-	)
-
-	key := "test-key"
-
-	rl.Allow(key)
-
-	clock.Advance(2 * time.Minute);
-
-	rl.cleanup()
-
-	if _, exists := rl.clients[key]; exists {
-		t.Fatalf("expected client to be removed after incativity")
 	}
 }

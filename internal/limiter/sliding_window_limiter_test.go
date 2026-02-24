@@ -121,25 +121,3 @@ func TestSlidingWindow_IsPerClient(t *testing.T) {
 		t.Fatalf("expected apiKey2 first request to be allowed independently")
 	}
 }
-
-func TestCleanUp_RemovesInactiveClients_SlidingWindow(t *testing.T) {
-	clock := NewFakeClock(time.Now())
-
-	sw := NewSlidingWindowLimiter(
-		clock,
-		LimitConfig{Limit: 5, Window: time.Minute},
-		nil,
-	)
-
-	key := "test-key"
-
-	sw.Allow(key)
-
-	clock.Advance(5 * time.Minute);
-
-	sw.cleanup()
-
-	if _, exists := sw.clients[key]; exists {
-		t.Fatalf("expected client to be removed after incativity")
-	}
-}

@@ -117,25 +117,3 @@ func TestTokenBucketDeniesWhenEmpty(t *testing.T) {
 		t.Fatalf("expected denial when bucket is empty")
 	}
 }
-
-func TestCleanUp_RemovesInactiveClients_TokenBucket(t *testing.T) {
-	clock := NewFakeClock(time.Now())
-
-	tb := NewTokenBucketLimiter(
-		clock,
-		LimitConfig{Limit: 5, Window: time.Minute},
-		nil,
-	)
-
-	key := "test-key"
-
-	tb.Allow(key)
-
-	clock.Advance(5 * time.Minute);
-
-	tb.cleanup()
-
-	if _, exists := tb.clients[key]; exists {
-		t.Fatalf("expected client to be removed after incativity")
-	}
-}

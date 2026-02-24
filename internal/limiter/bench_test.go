@@ -6,11 +6,15 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/bellettati/go-rate-limited-api/internal/store"
 )
 
 func BenchmarkFixedWindow_Allow_SameKey_Parallel(b *testing.B) {
 	clock := RealClock{}
+	st := store.NewMemoryStoreWithCleanupInterval(time.Minute)
 	rl := NewFixedWindowLimiter(
+		st,
 		clock,
 		LimitConfig{ Limit: 1_000_000_000, Window: time.Second},
 		nil,
@@ -28,7 +32,9 @@ func BenchmarkFixedWindow_Allow_SameKey_Parallel(b *testing.B) {
 
 func BenchmarkFixedWindow_Allow_ManyKeys_Parallel(b *testing.B) {
 	clock := RealClock{}
+	st := store.NewMemoryStoreWithCleanupInterval(time.Minute)
 	rl := NewFixedWindowLimiter(
+		st,
 		clock,
 		LimitConfig{Limit: 1_000_000_000, Window: time.Second},
 		nil,
@@ -56,7 +62,8 @@ func BenchmarkFixedWindow_Allow_ManyKeys_Parallel(b *testing.B) {
 
 func BenchmarkFixedWindow_Allow_Blocked_SameKey_Parallel(b *testing.B) {
 	clock := RealClock{}
-	rl := NewFixedWindowLimiter(clock, LimitConfig{Limit: 1, Window: time.Hour}, nil)
+	st := store.NewMemoryStoreWithCleanupInterval(time.Minute)
+	rl := NewFixedWindowLimiter(st, clock, LimitConfig{Limit: 1, Window: time.Hour}, nil)
 
 	key := "blocked-key"
 
@@ -72,7 +79,8 @@ func BenchmarkFixedWindow_Allow_Blocked_SameKey_Parallel(b *testing.B) {
 
 func BenchmarkFixedWindow_Allow_FirstHit_UniqueKey(b *testing.B) {
 	clock := RealClock{}
-	rl := NewFixedWindowLimiter(clock, LimitConfig{Limit: 1_000_000_000, Window: time.Second}, nil)
+	st := store.NewMemoryStoreWithCleanupInterval(time.Minute)
+	rl := NewFixedWindowLimiter(st, clock, LimitConfig{Limit: 1_000_000_000, Window: time.Second}, nil)
 
 	var seq uint64
 

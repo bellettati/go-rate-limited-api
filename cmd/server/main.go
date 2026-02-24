@@ -10,6 +10,7 @@ import (
 	"github.com/bellettati/go-rate-limited-api/internal/handlers"
 	"github.com/bellettati/go-rate-limited-api/internal/limiter"
 	"github.com/bellettati/go-rate-limited-api/internal/middleware"
+	"github.com/bellettati/go-rate-limited-api/internal/store"
 )
 
 func main() {
@@ -26,10 +27,11 @@ func main() {
 
 	var requestLimiter limiter.Limiter
 	clock := limiter.RealClock{} 
+	st := store.NewMemoryStoreWithCleanupInterval(time.Minute)
 
 	switch cfg.RateLimitStrategy {
 	case config.FixedWindow:
-		requestLimiter = limiter.NewFixedWindowLimiter(clock, defaultLimit, overrides)
+		requestLimiter = limiter.NewFixedWindowLimiter(st, clock, defaultLimit, overrides)
 
 	case config.SlidingWindow:
 		requestLimiter = limiter.NewSlidingWindowLimiter(clock, defaultLimit, overrides)

@@ -1,39 +1,30 @@
 package limiter
 
 import (
-	"sync"
+	"context"
 	"time"
+
+	"github.com/bellettati/go-rate-limited-api/internal/store"
 )
 
-type clientState struct {
-	count       int
-	windowStart time.Time
-	lastSeen time.Time
-}
-
 type FixedWindowLimiter struct {
-	mu           sync.Mutex
-	clients      map[string]*clientState
+	st 			 store.Store
 	defaultLimit LimitConfig
 	overrides    map[string]LimitConfig
-	clock Clock
+	clock 		 Clock
 }
 
-func NewFixedWindowLimiter(clock Clock, defaultLimit LimitConfig, overrides map[string]LimitConfig) *FixedWindowLimiter {
+func NewFixedWindowLimiter(st store.Store, clock Clock, defaultLimit LimitConfig, overrides map[string]LimitConfig) *FixedWindowLimiter {
 	if overrides == nil {
 		overrides = make(map[string]LimitConfig)
 	}
 
-	rl := &FixedWindowLimiter{
-		clients:      make(map[string]*clientState),
+	return &FixedWindowLimiter{
+		st:		      st,
 		defaultLimit: defaultLimit,
 		overrides:    overrides,
-		clock: clock,
+		clock:        clock,
 	}
-
-	go rl.startCleanup()
-
-	return rl 
 }
 
 func (rl *FixedWindowLimiter) configFor(apiKey string) LimitConfig {
@@ -44,82 +35,76 @@ func (rl *FixedWindowLimiter) configFor(apiKey string) LimitConfig {
 	return rl.defaultLimit
 }
 
-func (rl *FixedWindowLimiter) cleanup() {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-
-	now := rl.clock.Now()
-
-	for key, client := range rl.clients {
-		cfg := rl.configFor(key)
-		if now.Sub(client.lastSeen) > cfg.Window {
-			delete(rl.clients, key)
-		}
-	}
-}
-
-func (rl *FixedWindowLimiter) startCleanup() {
-	ticker := time.NewTicker(time.Minute)
-
-	for range ticker.C {
-		rl.cleanup()
-	}
+func windowBounds(now time.Time, window time.Duration) (start time.Time, end time.Time) {
+	start = now.Truncate(window)
+	end = start.Add(window)
+	return start, end
 }
 
 func (rl *FixedWindowLimiter) Allow(apiKey string) RateLimitResult {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-
-	now := rl.clock.Now()
-
-	state, exists := rl.clients[apiKey]
-
 	cfg := rl.configFor(apiKey)
 
-	if !exists {
-		rl.clients[apiKey] = &clientState{
-			count:       1,
-			windowStart: now,
-			lastSeen: now,
-		}
+	now := rl.clock.Now()
+	windowStart, windowEnd := windowBounds(now, cfg.Window)
 
-		return RateLimitResult{
+	key := "rl:fixed:"+apiKey+":"+formatUnixNano(windowStart)
+
+	ttl := time.Until(windowEnd)
+	if ttl < 0 {
+		ttl = 0
+	}
+
+	val, _, err := rl.st.IncrWithTTL(context.Background(), key, ttl)
+	if err != nil {
+		return RateLimitResult {
 			Allowed:   true,
-			Remaining: cfg.Limit - 1,
-			ResetAt:   now.Add(cfg.Window),
+			Remaining: cfg.Limit,
+			ResetAt:   windowEnd,
 			Limit:     cfg.Limit,
 		}
 	}
 
-	state.lastSeen = now
+	allowed := int(val) <= cfg.Limit
+	remaining := cfg.Limit - int(val)
 
-	if now.Sub(state.windowStart) >= cfg.Window {
-		state.count = 1
-		state.windowStart = now
-
-		return RateLimitResult{
-			Allowed:   true,
-			Remaining: cfg.Limit - 1,
-			ResetAt:   now.Add(cfg.Window),
-			Limit:     cfg.Limit,
-		}
+	if remaining < 0 {
+		remaining = 0
 	}
-
-	if state.count >= cfg.Limit {
-		return RateLimitResult{
-			Allowed:   false,
-			Remaining: 0,
-			ResetAt:   state.windowStart.Add(cfg.Window),
-			Limit:     cfg.Limit,
-		}
-	}
-
-	state.count++
 
 	return RateLimitResult{
-		Allowed:   true,
-		Remaining: cfg.Limit - state.count,
-		ResetAt:   state.windowStart.Add(cfg.Window),
+		Allowed:   allowed,
+		Remaining: remaining,
+		ResetAt:   windowEnd,
 		Limit:     cfg.Limit,
 	}
+}
+
+func formatUnixNano(t time.Time) string {
+	var b [32]byte
+	n := t.UnixNano()
+
+	i := len(b)
+	if n == 0 {
+		i--
+		b[i] = '0'
+		return string(b[i:])
+	}
+
+	neg := n < 0
+	if neg {
+		n = -n
+	}
+
+	for n > 0 {
+		i--
+		b[i] = byte('0' + (n % 10))
+		n /= 10
+	}
+
+	if neg {
+		i--
+		b[i] = '-'
+	}
+
+	return string(b[i:])
 }

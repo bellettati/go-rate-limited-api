@@ -8,11 +8,14 @@ import (
 
 	"github.com/bellettati/go-rate-limited-api/internal/limiter"
 	"github.com/bellettati/go-rate-limited-api/internal/middleware"
+	"github.com/bellettati/go-rate-limited-api/internal/store"
 )
 
 func setupTestServer() http.Handler {
 	clock := limiter.NewFakeClock(time.Now())
+	st := store.NewMemoryStoreWithCleanupInterval(time.Minute)
 	rl := limiter.NewFixedWindowLimiter(
+		st,
 		clock,
 		limiter.LimitConfig{Limit: 2, Window: time.Minute},
 		nil,
