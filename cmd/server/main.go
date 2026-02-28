@@ -27,18 +27,38 @@ func main() {
 
 	var requestLimiter limiter.Limiter
 	clock := limiter.RealClock{} 
-	st := store.NewMemoryStoreWithCleanupInterval(time.Minute)
+
+	var st store.Store	
+	switch cfg.RateLimitBackend {
+	case config.InMemory:
+		st = store.NewMemoryStoreWithCleanupInterval(cfg.DefaultWindow)
+	case config.Redis:
+		rs, err := store.NewRedisStore(store.RedisConfig{
+			Addr: cfg.RedisAddr,
+			Password: cfg.RedisPassword,
+			DB: cfg.RedisDB,
+			DialTimeout: cfg.RedisDialTimeout,
+			ReadTimeout: cfg.RedisReadTimeout,
+			WriteTimeout: cfg.RedisWriteTimeout,
+		})
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		st = rs
+	default:
+		log.Fatalf("unsupported backend: %q", cfg.RateLimitBackend)
+	}
+	defer func() { _ = st.Close() }()
 
 	switch cfg.RateLimitStrategy {
 	case config.FixedWindow:
 		requestLimiter = limiter.NewFixedWindowLimiter(st, clock, defaultLimit, overrides)
-
 	case config.SlidingWindow:
 		requestLimiter = limiter.NewSlidingWindowLimiter(clock, defaultLimit, overrides)
-
 	case config.TokenBucket:
 		requestLimiter = limiter.NewTokenBucketLimiter(clock, defaultLimit, overrides)
-
 	default:
 		log.Fatalf("unsupported rate limit strategy: %q", cfg.RateLimitStrategy)
 	}
